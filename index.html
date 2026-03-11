@@ -31,10 +31,28 @@
     <!-- 设置OCR密钥的弹窗 -->
     <div id="modal-settings" class="modal">
         <div class="modal-content">
-            <h3>设置腾讯云OCR密钥</h3>
-            <p class="settings-tip">密钥仅保存在本机，不会上传</p>
-            <input type="text" id="settings-secret-id" placeholder="SecretId">
-            <input type="password" id="settings-secret-key" placeholder="SecretKey">
+            <h3>设置OCR识别</h3>
+            <p class="settings-tip">默认使用免费OCR服务，识别不准确时可配置腾讯云</p>
+
+            <div class="ocr-tabs">
+                <button class="ocr-tab active" onclick="switchOCRTab('free')">免费OCR</button>
+                <button class="ocr-tab" onclick="switchOCRTab('tencent')">腾讯云OCR</button>
+            </div>
+
+            <div id="ocr-free-panel" class="ocr-panel active">
+                <p class="panel-desc">使用免费OCR.space服务，每日250次免费额度</p>
+                <label class="checkbox-label">
+                    <input type="checkbox" id="use-free-ocr" checked>
+                    使用免费OCR（推荐）
+                </label>
+            </div>
+
+            <div id="ocr-tencent-panel" class="ocr-panel">
+                <p class="panel-desc">腾讯云OCR更准确，需配置密钥</p>
+                <input type="text" id="settings-secret-id" placeholder="SecretId">
+                <input type="password" id="settings-secret-key" placeholder="SecretKey">
+            </div>
+
             <div class="modal-buttons">
                 <button class="btn-cancel" onclick="hideSettings()">取消</button>
                 <button class="btn-confirm" onclick="saveSettings()">保存</button>

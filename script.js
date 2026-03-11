@@ -3,8 +3,15 @@
  * 功能：用户管理、拍照识别、数据存储、历史查看、对比分析
  */
 
-// ==================== 腾讯云OCR配置 ====================
-// 从本地存储读取密钥，如果没有则使用空值（用户需在设置中填入）
+// ==================== OCR配置 ====================
+// 支持多种OCR服务，优先使用支持CORS的OCR.space
+const OCR_CONFIG = {
+    // OCR.space（支持前端直接调用，免费250次/天）
+    apiKey: localStorage.getItem('ocr_api_key') || 'helloworld', // 默认免费测试key
+    service: 'ocrspace' // ocrspace 或 tencent
+};
+
+// 兼容旧的腾讯云配置
 const TENCENT_CONFIG = {
     SecretId: localStorage.getItem('tencent_secret_id') || '',
     SecretKey: localStorage.getItem('tencent_secret_key') || '',
@@ -191,17 +198,34 @@ function renderUserList() {
     `).join('');
 }
 
-// ==================== 设置OCR密钥 ====================
+// ==================== 设置OCR ====================
+
+let currentOCRTab = 'free';
+
+// 切换OCR设置标签
+function switchOCRTab(tab) {
+    currentOCRTab = tab;
+
+    // 切换按钮样式
+    document.querySelectorAll('.ocr-tab').forEach(btn => {
+        btn.classList.remove('active');
+    });
+    event.target.classList.add('active');
+
+    // 切换面板
+    document.getElementById('ocr-free-panel').classList.toggle('active', tab === 'free');
+    document.getElementById('ocr-tencent-panel').classList.toggle('active', tab === 'tencent');
+}
 
 // 显示设置弹窗
 function showSettings() {
     const modal = document.getElementById('modal-settings');
-    const secretIdInput = document.getElementById('settings-secret-id');
-    const secretKeyInput = document.getElementById('settings-secret-key');
 
-    // 填入当前保存的密钥（如果有）
-    secretIdInput.value = localStorage.getItem('tencent_secret_id') || '';
-    secretKeyInput.value = localStorage.getItem('tencent_secret_key') || '';
+    // 填入当前保存的设置
+    const useFree = localStorage.getItem('use_free_ocr') !== 'false';
+    document.getElementById('use-free-ocr').checked = useFree;
+    document.getElementById('settings-secret-id').value = localStorage.getItem('tencent_secret_id') || '';
+    document.getElementById('settings-secret-key').value = localStorage.getItem('tencent_secret_key') || '';
 
     modal.classList.add('active');
 }
@@ -213,23 +237,31 @@ function hideSettings() {
 
 // 保存设置
 function saveSettings() {
+    const useFreeOCR = document.getElementById('use-free-ocr').checked;
     const secretId = document.getElementById('settings-secret-id').value.trim();
     const secretKey = document.getElementById('settings-secret-key').value.trim();
 
-    if (!secretId || !secretKey) {
-        alert('请填写完整的SecretId和SecretKey');
-        return;
+    // 保存到本地存储
+    localStorage.setItem('use_free_ocr', useFreeOCR);
+
+    if (secretId && secretKey) {
+        localStorage.setItem('tencent_secret_id', secretId);
+        localStorage.setItem('tencent_secret_key', secretKey);
+        TENCENT_CONFIG.SecretId = secretId;
+        TENCENT_CONFIG.SecretKey = secretKey;
     }
 
-    // 保存到本地存储
-    localStorage.setItem('tencent_secret_id', secretId);
-    localStorage.setItem('tencent_secret_key', secretKey);
+    // 更新配置
+    OCR_CONFIG.apiKey = useFreeOCR ? 'helloworld' : '';
 
-    // 更新当前配置
-    TENCENT_CONFIG.SecretId = secretId;
-    TENCENT_CONFIG.SecretKey = secretKey;
+    if (useFreeOCR) {
+        alert('已启用免费OCR服务！每天可识别250次。');
+    } else if (secretId && secretKey) {
+        alert('已启用腾讯云OCR！');
+    } else {
+        alert('设置已保存');
+    }
 
-    alert('密钥已保存！现在可以使用OCR识别功能了。');
     hideSettings();
 }
 
@@ -327,18 +359,42 @@ function handlePhotoCapture(event) {
 }
 
 // OCR识别主函数
-function simulateOCR(photoData) {
-    // 检查是否配置了真实密钥
-    if (TENCENT_CONFIG.SecretId === 'YOUR_SECRET_ID' ||
-        TENCENT_CONFIG.SecretKey === 'YOUR_SECRET_KEY') {
-        // 未配置密钥，使用模拟识别
-        console.log('未配置腾讯云密钥，使用模拟识别');
-        simulateOCRMock(photoData);
-        return;
-    }
+async function simulateOCR(photoData) {
+    try {
+        showLoading(true);
 
-    // 配置了密钥，使用真实OCR
-    callTencentOCR(photoData);
+        // 优先使用 OCR.space（支持CORS）
+        console.log('尝试使用 OCR.space 识别...');
+        const result = await callOCRSpace(photoData);
+
+        if (result && result.length > 0) {
+            currentState.recognizedData = result;
+            renderRecognizedItems(result);
+            showPage('page-result');
+        } else {
+            throw new Error('未能识别出内容');
+        }
+
+    } catch (error) {
+        console.error('OCR识别失败:', error);
+
+        // 如果OCR.space失败，尝试腾讯云（如果配置了）
+        if (TENCENT_CONFIG.SecretId && TENCENT_CONFIG.SecretKey) {
+            console.log('尝试使用腾讯云OCR...');
+            try {
+                await callTencentOCR(photoData);
+                return;
+            } catch (tencentError) {
+                console.error('腾讯云OCR也失败:', tencentError);
+            }
+        }
+
+        // 都失败了，使用模拟数据
+        alert('OCR识别失败，将使用模拟数据。您可以手动修改识别结果。\n错误：' + error.message);
+        simulateOCRMock(photoData);
+    } finally {
+        showLoading(false);
+    }
 }
 
 // 模拟OCR识别（用于测试）
@@ -359,6 +415,113 @@ function simulateOCRMock(photoData) {
         showPage('page-result');
 
     }, 1500);
+}
+
+// 调用 OCR.space（支持CORS，有免费额度）
+async function callOCRSpace(photoData) {
+    // 压缩图片以减小体积
+    const compressedImage = await compressImage(photoData, 800, 0.7);
+
+    const formData = new FormData();
+    formData.append('base64Image', compressedImage);
+    formData.append('language', 'chs'); // 中文简体
+    formData.append('isOverlayRequired', 'false');
+    formData.append('detectOrientation', 'true');
+    formData.append('scale', 'true');
+
+    const response = await fetch('https://api.ocr.space/parse/image', {
+        method: 'POST',
+        body: formData
+    });
+
+    const result = await response.json();
+
+    if (result.IsErroredOnProcessing) {
+        throw new Error(result.ErrorMessage || 'OCR识别失败');
+    }
+
+    if (!result.ParsedResults || result.ParsedResults.length === 0) {
+        throw new Error('未识别出文字');
+    }
+
+    // 合并所有识别结果
+    const fullText = result.ParsedResults.map(r => r.ParsedText).join(' ');
+    console.log('OCR识别原文：', fullText);
+
+    // 解析识别结果
+    return parseOCRResultFromText(fullText);
+}
+
+// 压缩图片
+async function compressImage(dataUrl, maxWidth, quality) {
+    return new Promise((resolve) => {
+        const img = new Image();
+        img.onload = () => {
+            const canvas = document.createElement('canvas');
+            let width = img.width;
+            let height = img.height;
+
+            // 等比缩放
+            if (width > maxWidth) {
+                height = Math.round(height * maxWidth / width);
+                width = maxWidth;
+            }
+
+            canvas.width = width;
+            canvas.height = height;
+
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0, width, height);
+
+            resolve(canvas.toDataURL('image/jpeg', quality));
+        };
+        img.src = dataUrl;
+    });
+}
+
+// 从文本解析检查项目
+function parseOCRResultFromText(text) {
+    const items = [];
+
+    // 常见医学检查项目识别模式
+    const patterns = [
+        { name: '血糖', regex: /(?:血糖|GLU|葡萄糖)[^\d]*(\d+\.?\d*)/i, ref: '3.9-6.1' },
+        { name: '血压', regex: /(?:血压|BP)[^\d]*(\d{2,3})\s*[\/\-]?\s*(\d{2,3})/i, ref: '90-140/60-90', isRatio: true },
+        { name: '总胆固醇', regex: /(?:总胆固醇|CHO|TC)[^\d]*(\d+\.?\d*)/i, ref: '2.8-5.2' },
+        { name: '甘油三酯', regex: /(?:甘油三酯|TG)[^\d]*(\d+\.?\d*)/i, ref: '0.4-1.7' },
+        { name: '尿酸', regex: /(?:尿酸|UA)[^\d]*(\d+)/i, ref: '150-420' },
+        { name: '血红蛋白', regex: /(?:血红蛋白|HGB)[^\d]*(\d+)/i, ref: '120-160' },
+        { name: '白细胞', regex: /(?:白细胞|WBC)[^\d]*(\d+\.?\d*)/i, ref: '4-10' },
+        { name: '血小板', regex: /(?:血小板|PLT)[^\d]*(\d+)/i, ref: '100-300' },
+        { name: '肌酐', regex: /(?:肌酐|CREA)[^\d]*(\d+)/i, ref: '44-133' },
+        { name: '尿素氮', regex: /(?:尿素氮|BUN)[^\d]*(\d+\.?\d*)/i, ref: '2.6-7.5' }
+    ];
+
+    patterns.forEach(pattern => {
+        const match = text.match(pattern.regex);
+        if (match) {
+            const value = pattern.isRatio ? `${match[1]}/${match[2]}` : match[1];
+            items.push({
+                itemName: pattern.name,
+                value: value,
+                reference: pattern.ref
+            });
+        }
+    });
+
+    // 如果没识别出任何项目，尝试提取所有数字作为备选
+    if (items.length === 0) {
+        const numbers = text.match(/\d+\.?\d*/g);
+        if (numbers && numbers.length > 0) {
+            items.push({
+                itemName: '未识别项目',
+                value: numbers[0],
+                reference: ''
+            });
+        }
+    }
+
+    return items.length > 0 ? items : [{ itemName: '未识别', value: '请手动输入', reference: '' }];
 }
 
 // 调用腾讯云真实OCR
