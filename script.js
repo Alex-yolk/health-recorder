@@ -7,8 +7,8 @@
 // 支持多种OCR服务，优先使用支持CORS的OCR.space
 const OCR_CONFIG = {
     // OCR.space（支持前端直接调用，免费250次/天）
-    apiKey: localStorage.getItem('ocr_api_key') || 'helloworld', // 默认免费测试key
-    service: 'ocrspace' // ocrspace 或 tencent
+    apiKey: localStorage.getItem('ocr_api_key') || '', // 用户需填入自己的key
+    service: localStorage.getItem('ocr_service') || 'ocrspace' // ocrspace 或 tencent
 };
 
 // 兼容旧的腾讯云配置
@@ -222,8 +222,8 @@ function showSettings() {
     const modal = document.getElementById('modal-settings');
 
     // 填入当前保存的设置
-    const useFree = localStorage.getItem('use_free_ocr') !== 'false';
-    document.getElementById('use-free-ocr').checked = useFree;
+    const ocrSpaceKey = localStorage.getItem('ocr_api_key') || '';
+    document.getElementById('settings-ocr-space-key').value = ocrSpaceKey;
     document.getElementById('settings-secret-id').value = localStorage.getItem('tencent_secret_id') || '';
     document.getElementById('settings-secret-key').value = localStorage.getItem('tencent_secret_key') || '';
 
@@ -237,29 +237,37 @@ function hideSettings() {
 
 // 保存设置
 function saveSettings() {
-    const useFreeOCR = document.getElementById('use-free-ocr').checked;
+    const ocrSpaceKey = document.getElementById('settings-ocr-space-key').value.trim();
     const secretId = document.getElementById('settings-secret-id').value.trim();
     const secretKey = document.getElementById('settings-secret-key').value.trim();
 
-    // 保存到本地存储
-    localStorage.setItem('use_free_ocr', useFreeOCR);
+    let saved = false;
 
+    // 保存OCR.space密钥
+    if (ocrSpaceKey) {
+        localStorage.setItem('ocr_api_key', ocrSpaceKey);
+        OCR_CONFIG.apiKey = ocrSpaceKey;
+        OCR_CONFIG.service = 'ocrspace';
+        saved = true;
+    }
+
+    // 保存腾讯云密钥
     if (secretId && secretKey) {
         localStorage.setItem('tencent_secret_id', secretId);
         localStorage.setItem('tencent_secret_key', secretKey);
         TENCENT_CONFIG.SecretId = secretId;
         TENCENT_CONFIG.SecretKey = secretKey;
+        OCR_CONFIG.service = 'tencent';
+        saved = true;
     }
 
-    // 更新配置
-    OCR_CONFIG.apiKey = useFreeOCR ? 'helloworld' : '';
-
-    if (useFreeOCR) {
-        alert('已启用免费OCR服务！每天可识别250次。');
+    if (ocrSpaceKey) {
+        alert('OCR.space密钥已保存！现在可以使用OCR识别功能了。');
     } else if (secretId && secretKey) {
-        alert('已启用腾讯云OCR！');
+        alert('腾讯云OCR密钥已保存！');
     } else {
-        alert('设置已保存');
+        alert('请至少填入一种OCR服务的密钥');
+        return;
     }
 
     hideSettings();
@@ -426,6 +434,12 @@ function simulateOCRMock(photoData) {
 async function callOCRSpace(photoData) {
     console.log('开始OCR识别...');
 
+    // 检查是否有API Key
+    const apiKey = OCR_CONFIG.apiKey || localStorage.getItem('ocr_api_key');
+    if (!apiKey) {
+        throw new Error('未配置OCR.space API Key，请在设置中填入');
+    }
+
     // 压缩图片以减小体积
     console.log('压缩图片...');
     const compressedImage = await compressImage(photoData, 800, 0.7);
@@ -438,6 +452,7 @@ async function callOCRSpace(photoData) {
     formData.append('detectOrientation', 'true');
     formData.append('scale', 'true');
     formData.append('OCREngine', '2'); // 使用引擎2，对中文更好
+    formData.append('apikey', apiKey); // 使用用户的API Key
 
     console.log('发送OCR请求...');
 

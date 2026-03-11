@@ -185,13 +185,21 @@ h3 {
 }
 
 #settings-secret-id,
-#settings-secret-key {
+#settings-secret-key,
+#settings-ocr-space-key {
     width: 100%;
     padding: 12px;
-    margin-bottom: 15px;
+    margin-bottom: 10px;
     font-size: 14px;
     border: 2px solid #e0e0e0;
     border-radius: 8px;
+}
+
+.input-tip {
+    font-size: 12px;
+    color: #999;
+    margin-top: -5px;
+    margin-bottom: 15px;
 }
 
 /* OCR标签页 */
