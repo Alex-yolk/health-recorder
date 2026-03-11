@@ -390,7 +390,12 @@ async function simulateOCR(photoData) {
         }
 
         // 都失败了，使用模拟数据
-        alert('OCR识别失败，将使用模拟数据。您可以手动修改识别结果。\n错误：' + error.message);
+        let errorMsg = error.message || '未知错误';
+        if (errorMsg.includes('Failed to fetch') || errorMsg.includes('Network')) {
+            errorMsg = '网络连接失败，可能是：\n1. 网络不稳定\n2. OCR服务暂时不可用\n3. 图片太大';
+        }
+
+        alert('OCR识别失败，将使用模拟数据。\n\n错误：' + errorMsg + '\n\n您可以手动修改识别结果。');
         simulateOCRMock(photoData);
     } finally {
         showLoading(false);
@@ -419,8 +424,12 @@ function simulateOCRMock(photoData) {
 
 // 调用 OCR.space（支持CORS，有免费额度）
 async function callOCRSpace(photoData) {
+    console.log('开始OCR识别...');
+
     // 压缩图片以减小体积
+    console.log('压缩图片...');
     const compressedImage = await compressImage(photoData, 800, 0.7);
+    console.log('图片压缩完成');
 
     const formData = new FormData();
     formData.append('base64Image', compressedImage);
@@ -428,52 +437,77 @@ async function callOCRSpace(photoData) {
     formData.append('isOverlayRequired', 'false');
     formData.append('detectOrientation', 'true');
     formData.append('scale', 'true');
+    formData.append('OCREngine', '2'); // 使用引擎2，对中文更好
 
-    const response = await fetch('https://api.ocr.space/parse/image', {
-        method: 'POST',
-        body: formData
-    });
+    console.log('发送OCR请求...');
 
-    const result = await response.json();
+    try {
+        const response = await fetch('https://api.ocr.space/parse/image', {
+            method: 'POST',
+            body: formData
+        });
 
-    if (result.IsErroredOnProcessing) {
-        throw new Error(result.ErrorMessage || 'OCR识别失败');
+        console.log('收到响应:', response.status);
+
+        if (!response.ok) {
+            throw new Error(`HTTP错误: ${response.status}`);
+        }
+
+        const result = await response.json();
+        console.log('OCR结果:', result);
+
+        if (result.IsErroredOnProcessing) {
+            throw new Error(result.ErrorMessage || 'OCR识别失败');
+        }
+
+        if (!result.ParsedResults || result.ParsedResults.length === 0) {
+            throw new Error('未识别出文字');
+        }
+
+        // 合并所有识别结果
+        const fullText = result.ParsedResults.map(r => r.ParsedText).join(' ');
+        console.log('OCR识别原文：', fullText);
+
+        // 解析识别结果
+        return parseOCRResultFromText(fullText);
+
+    } catch (fetchError) {
+        console.error('OCR请求失败:', fetchError);
+        throw new Error(`网络请求失败: ${fetchError.message}`);
     }
-
-    if (!result.ParsedResults || result.ParsedResults.length === 0) {
-        throw new Error('未识别出文字');
-    }
-
-    // 合并所有识别结果
-    const fullText = result.ParsedResults.map(r => r.ParsedText).join(' ');
-    console.log('OCR识别原文：', fullText);
-
-    // 解析识别结果
-    return parseOCRResultFromText(fullText);
 }
 
 // 压缩图片
 async function compressImage(dataUrl, maxWidth, quality) {
-    return new Promise((resolve) => {
+    return new Promise((resolve, reject) => {
         const img = new Image();
         img.onload = () => {
-            const canvas = document.createElement('canvas');
-            let width = img.width;
-            let height = img.height;
+            try {
+                const canvas = document.createElement('canvas');
+                let width = img.width;
+                let height = img.height;
 
-            // 等比缩放
-            if (width > maxWidth) {
-                height = Math.round(height * maxWidth / width);
-                width = maxWidth;
+                // 等比缩放
+                if (width > maxWidth) {
+                    height = Math.round(height * maxWidth / width);
+                    width = maxWidth;
+                }
+
+                canvas.width = width;
+                canvas.height = height;
+
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0, width, height);
+
+                const compressed = canvas.toDataURL('image/jpeg', quality);
+                console.log('图片压缩成功:', width, 'x', height);
+                resolve(compressed);
+            } catch (e) {
+                reject(new Error('图片压缩失败: ' + e.message));
             }
-
-            canvas.width = width;
-            canvas.height = height;
-
-            const ctx = canvas.getContext('2d');
-            ctx.drawImage(img, 0, 0, width, height);
-
-            resolve(canvas.toDataURL('image/jpeg', quality));
+        };
+        img.onerror = () => {
+            reject(new Error('图片加载失败'));
         };
         img.src = dataUrl;
     });
