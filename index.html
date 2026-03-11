@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <!-- 适配手机屏幕的关键设置 -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>健康记录助手</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <!-- ========== 页面1：选择用户 ========== -->
+    <div id="page-user-select" class="page active">
+        <div class="container">
+            <h1>👋 您好！</h1>
+            <p class="subtitle">请选择记录人</p>
+
+            <!-- 用户列表 -->
+            <div id="user-list" class="user-list">
+                <!-- 用户按钮会通过JavaScript动态生成 -->
+            </div>
+
+            <!-- 添加新用户 -->
+            <button class="btn-add-user" onclick="showAddUser()">+ 添加家人</button>
+
+            <!-- 设置按钮 -->
+            <button class="btn-settings" onclick="showSettings()">⚙️ 设置OCR密钥</button>
+        </div>
+    </div>
+
+    <!-- 设置OCR密钥的弹窗 -->
+    <div id="modal-settings" class="modal">
+        <div class="modal-content">
+            <h3>设置腾讯云OCR密钥</h3>
+            <p class="settings-tip">密钥仅保存在本机，不会上传</p>
+            <input type="text" id="settings-secret-id" placeholder="SecretId">
+            <input type="password" id="settings-secret-key" placeholder="SecretKey">
+            <div class="modal-buttons">
+                <button class="btn-cancel" onclick="hideSettings()">取消</button>
+                <button class="btn-confirm" onclick="saveSettings()">保存</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 添加用户的弹窗 -->
+    <div id="modal-add-user" class="modal">
+        <div class="modal-content">
+            <h3>添加家人</h3>
+            <input type="text" id="new-username" placeholder="请输入姓名（如：妈妈）">
+            <div class="modal-buttons">
+                <button class="btn-cancel" onclick="hideAddUser()">取消</button>
+                <button class="btn-confirm" onclick="addUser()">确定</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========== 页面2：主功能页（拍照+历史） ========== -->
+    <div id="page-main" class="page">
+        <!-- 顶部导航 -->
+        <header class="header">
+            <button class="btn-back" onclick="backToUserSelect()">← 切换用户</button>
+            <h2 id="current-user-name">妈妈</h2>
+        </header>
+
+        <div class="container">
+            <!-- 大拍照按钮区域 -->
+            <div class="camera-section">
+                <p class="tip">📷 拍摄检查单，自动识别数值</p>
+
+                <!-- 隐藏的摄像头输入 -->
+                <input type="file" id="camera-input" accept="image/*" capture="environment" style="display: none;">
+
+                <!-- 大大的拍照按钮 -->
+                <button class="btn-camera" onclick="openCamera()">
+                    <span class="camera-icon">📸</span>
+                    <span class="camera-text">点击拍照</span>
+                </button>
+            </div>
+
+            <!-- 最近记录 -->
+            <div class="recent-records">
+                <div class="records-header">
+                    <h3>📋 最近记录</h3>
+                    <div class="search-box">
+                        <input type="text" id="search-input" placeholder="🔍 搜索项目..." oninput="filterRecords()">
+                    </div>
+                </div>
+                <div id="recent-list" class="record-list">
+                    <p class="empty-tip">暂无记录，点击上方按钮拍照</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========== 页面3：识别结果页 ========== -->
+    <div id="page-result" class="page">
+        <header class="header">
+            <button class="btn-back" onclick="backToMain()">← 返回</button>
+            <h2>识别结果</h2>
+        </header>
+
+        <div class="container">
+            <!-- 预览照片 -->
+            <div class="photo-preview">
+                <img id="preview-image" src="" alt="检查单照片">
+            </div>
+
+            <!-- 识别结果表单 -->
+            <div class="result-form">
+                <!-- 异常值提醒（重要！） -->
+                <div id="abnormal-hint" class="abnormal-hint">
+                    <!-- 动态显示异常提醒 -->
+                </div>
+
+                <!-- 日期选择（共用） -->
+                <div class="form-row">
+                    <label>📅 检查日期</label>
+                    <input type="date" id="record-date">
+                </div>
+
+                <!-- 识别出的项目列表（动态生成） -->
+                <label>📝 识别结果（勾选要保存的项目）：</label>
+                <div class="select-all-bar">
+                    <span id="item-count">识别出 0 个项目</span>
+                    <button onclick="toggleSelectAll()">全选/取消</button>
+                </div>
+                <div id="recognized-items-list" class="recognized-items-list">
+                    <!-- 动态生成的项目列表 -->
+                </div>
+
+                <button class="btn-save" onclick="saveRecord()">💾 保存选中项目</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========== 页面4：项目详情页（历史+对比+趋势图） ========== -->
+    <div id="page-detail" class="page">
+        <header class="header">
+            <button class="btn-back" onclick="backToMain()">← 返回</button>
+            <h2 id="detail-item-name">血糖</h2>
+        </header>
+
+        <div class="container">
+            <!-- 统计卡片 -->
+            <div class="stats-card">
+                <p>共记录 <span id="record-count">0</span> 次</p>
+                <p>最近数值：<span id="latest-value">-</span></p>
+            </div>
+
+            <!-- 操作按钮 -->
+            <div class="action-buttons">
+                <button class="btn-action" onclick="toggleCompareMode()">📊 多选对比</button>
+                <button class="btn-action" onclick="showTrendChart()">📈 趋势图</button>
+            </div>
+
+            <!-- 对比操作栏（平时隐藏） -->
+            <div id="compare-bar" class="compare-bar" style="display: none;">
+                <span>已选择 <span id="selected-count">0</span> 项</span>
+                <button onclick="doCompare()">开始对比</button>
+                <button onclick="cancelCompare()">取消</button>
+            </div>
+
+            <!-- 历史记录列表 -->
+            <div id="history-list" class="history-list">
+                <!-- 动态生成 -->
+            </div>
+        </div>
+    </div>
+
+    <!-- 趋势图弹窗 -->
+    <div id="modal-chart" class="modal">
+        <div class="modal-content modal-large">
+            <h3>历史趋势</h3>
+            <div id="chart-container">
+                <canvas id="trendChart"></canvas>
+            </div>
+            <button class="btn-close" onclick="closeChart()">关闭</button>
+        </div>
+    </div>
+
+    <!-- 对比结果弹窗 -->
+    <div id="modal-compare" class="modal">
+        <div class="modal-content modal-large">
+            <h3>数据对比</h3>
+            <div id="compare-result"></div>
+            <button class="btn-close" onclick="closeCompare()">关闭</button>
+        </div>
+    </div>
+
+    <!-- 加载中提示 -->
+    <div id="loading" class="loading">
+        <div class="loading-spinner"></div>
+        <p>正在识别...</p>
+    </div>
+
+    <!-- 引入腾讯云SDK -->
+    <script src="https://cdn.jsdelivr.net/npm/tencentcloud-sdk-js@latest/dist/tencentcloud.min.js"></script>
+    <!-- 引入图表库 -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>
